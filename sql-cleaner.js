@@ -116,6 +116,19 @@ var cleaner = {
         } else {
             return null;
         }
+    },
+
+    userSqlCleaner: function (dbResult){
+        var user = {};
+        if(dbResult.length >= 1){
+            //Copy only the relevant information
+            user.iduser = dbResult[0].iduser;
+            user.email = dbResult[0].email;
+
+            return user;
+        }else{
+            return null;
+        }
     }
 };
 

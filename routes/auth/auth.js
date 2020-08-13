@@ -14,9 +14,6 @@ const mailer = require("../../tools/mailer");
 /* POST register user (doctor / patient) */
 router.post("/register/", function (req, res, next) {
     //VALIDATION
-    req.checkBody("role", "The role must be set to doctor or patient").matches(
-        /doctor|patient/
-    );
     req.checkBody(
         "email",
         "The email you entered is invalid, please try again."
@@ -37,10 +34,9 @@ router.post("/register/", function (req, res, next) {
 
     if (errors) {
         res.status(400);
-        res.send(errors);
+        res.send({code: "#A001", message: "Validation Error", list: errors});
     } else {
         //Valid Data
-        const role = req.body.role;
         const email = req.body.email;
         const password = req.body.password;
 
@@ -51,19 +47,13 @@ router.post("/register/", function (req, res, next) {
                 throw err;
             } else {
                 //Check if the user already exists
-                if (role == "doctor") {
-                    var sql_statement =
-                        "SELECT EXISTS(SELECT email FROM doctors WHERE email = ?) AS isexisting";
-                } else if (role == "patient") {
-                    var sql_statement =
-                        "SELECT EXISTS(SELECT email FROM patients WHERE email = ?) AS isexisting";
-                }
+                var sql_statement = "SELECT EXISTS(SELECT email FROM user WHERE email = ?) AS isexisting";
                 conn.query(sql_statement, [email], function (err, result) {
                     //No conn.release() here because it is used later
                     if (err) {
                         conn.release();
                         res.status(500);
-                        res.send("MySQL-Connection-Failed");
+                        res.send({code: "#I001", message: "MySQL-Connection-Failed"});
                         console.log(err);
                         throw err;
                         return;
@@ -71,8 +61,7 @@ router.post("/register/", function (req, res, next) {
                         if (result[0].isexisting == 0) {
                             //User does not exist
                             //Store new user in database
-                            if (role == "doctor") {
-                                //STORE DOCTOR
+                           
                                 //Hash the password
                                 bcrypt.genSalt(saltRounds, function (err, salt) {
                                     if (err) {
@@ -80,7 +69,7 @@ router.post("/register/", function (req, res, next) {
                                         console.log(err);
                                         res.status(500);
                                         res.send(
-                                            "Hashing failed. Maybe try another password."
+                                            {code: "#I002", message: "Password lead to hashing error."}
                                         );
                                     } else {
                                         bcrypt.hash(password, salt, function (
@@ -92,60 +81,40 @@ router.post("/register/", function (req, res, next) {
                                                 console.log(err);
                                                 res.status(500);
                                                 res.send(
-                                                    "Hashing failed. Maybe try another password."
+                                                    {code: "#I002", message: "Password lead to hashing error."}
                                                 );
                                             } else {
                                                 //Generate the Insert statement with hashed password
                                                 sql_statement =
-                                                    "INSERT INTO doctors (doc_status, email, password, timeofcreation) VALUES (?, ?, ?, NOW());";
+                                                    "INSERT INTO user (email, pwdhash) VALUES (?, ?);";
                                                 conn.query(
                                                     sql_statement,
-                                                    [0, email, hash],
+                                                    [email, hash],
                                                     function (err, result) {
                                                         //No conn.release() here because it is used later
                                                         if (err) {
                                                             conn.release();
                                                             throw err;
                                                         }
-                                                        //Get the user to return them
+                                                        //Get the user to return him
                                                         sql_statement =
-                                                            "SELECT * FROM doctors WHERE email = ?";
+                                                            "SELECT * FROM user WHERE email = ?";
                                                         conn.query(
                                                             sql_statement,
                                                             [email],
                                                             function (err, result) {
                                                                 conn.release();
                                                                 if (err) throw err;
-                                                                var user = cleaner.jwtDoctorSqlCleaner(
+                                                                var user = cleaner.userSqlCleaner(
                                                                     result
                                                                 );
+                                                                //expires in 1 day
                                                                 let exp =
                                                                     Date.now() +
-                                                                    1000 * 7 * 24 * 3600;
+                                                                    1000 * 1 * 24 * 3600;
                                                                 const token = jwt.sign(
                                                                     { user, exp: exp },
                                                                     jwtSecret
-                                                                );
-
-                                                                //Send Email for Emailadress verification
-                                                                //Eine zwei Wochen Frist
-                                                                let expemail =
-                                                                    Date.now() +
-                                                                    1000 * 14 * 24 * 3600;
-                                                                const mytoken = jwt.sign(
-                                                                    {
-                                                                        doctors_id:
-                                                                            user.doctors_id,
-                                                                        exp: expemail
-                                                                    },
-                                                                    jwtSecret
-                                                                );
-                                                                let link =
-                                                                    "https://api.quickdoctor.de/auth/verifyemail/?token=" +
-                                                                    mytoken;
-                                                                mailer.sendVerifyEmailadress(
-                                                                    email,
-                                                                    link
                                                                 );
 
                                                                 //Return
@@ -162,126 +131,17 @@ router.post("/register/", function (req, res, next) {
                                         });
                                     }
                                 });
-                            } else if (role == "patient") {
-                                //STORE PATIENT
-                                //Hash password
-                                bcrypt.genSalt(saltRounds, function (err, salt) {
-                                    if (err) {
-                                        console.log(err);
-                                        res.status(500);
-                                        res.send(
-                                            "Hashing failed. Maybe try another password." +
-                                            err
-                                        );
-                                    } else {
-                                        bcrypt.hash(password, salt, function (
-                                            err,
-                                            hash
-                                        ) {
-                                            if (err) {
-                                                console.log(err);
-                                                res.status(500);
-                                                res.send(
-                                                    "Hashing failed. Maybe try another password." +
-                                                    err
-                                                );
-                                            } else {
-                                                //Use the hash to save the patient
-                                                sql_statement =
-                                                    "INSERT INTO patients (status, email, password, timeofcreation) VALUES (?, ?, ?, NOW());";
-                                                conn.query(
-                                                    sql_statement,
-                                                    [1, email, hash],
-                                                    function (err, result) {
-                                                        //console.log(hash);
-                                                        if (err) {
-                                                            throw err;
-                                                        }
-                                                    }
-                                                );
-                                                //Get the user to return them
-                                                sql_statement =
-                                                    "SELECT * FROM patients WHERE email = ?";
-                                                conn.query(
-                                                    sql_statement,
-                                                    [email],
-                                                    function (err, result) {
-                                                        if (err) throw err;
-                                                        var user = cleaner.jwtPatientSqlCleaner(
-                                                            result
-                                                        );
-                                                        let exp =
-                                                            Date.now() +
-                                                            1000 * 7 * 24 * 3600;
-                                                        const token = jwt.sign(
-                                                            { user, exp: exp },
-                                                            jwtSecret
-                                                        );
-                                                        return res.json({
-                                                            user,
-                                                            token,
-                                                            exp
-                                                        });
-                                                    }
-                                                );
-                                            }
-                                        });
-                                    }
-                                });
-                            }
+                            
                         } else {
                             conn.release();
                             //User already exist
                             res.status(400);
-                            res.send("User already exists.");
+                            res.send({code: "#A002", message: "User already exists."});
                         }
                     }
-                }); // ende der Connection
-                //conn.release();
+                });
             }
         });
-    }
-});
-
-router.get("/verifyemail/", function (req, res, next) {
-    //Check the needed infos
-    if (req.query.token) {
-        let token = jwt.decode(req.query.token);
-        //confirm the appointment
-        if (token.exp >= Date.now()) {
-            mysqlpool.getConnection((err, conn) => {
-                let sql_statement =
-                    "UPDATE doctors SET doc_status = 1 WHERE doctors_id = ?";
-                conn.query(sql_statement, [token.doctors_id], (err, result) => {
-                    conn.release();
-                    if (err) {
-                        throw err;
-                    }
-                    //Notify Support to inspect the doctor
-                    mailer.sendDefault(
-                        "support@quickdoctor.de",
-                        "Neuer Doctor - Bitte Verifizieren",
-                        " Der Doctor mit der Id=" +
-                        token.doctors_id +
-                        " hat sich registriert und muss verifiziert werden."
-                    );
-
-                    //Redirect to the site where they can login and
-                    res.redirect("https://quickdoctor.de/emailverified/");
-                });
-                //conn.release();
-            });
-        } else {
-            //EXP in token is in the past
-            // Maybe look if the wonted appointment is still free dann book and confirm it directly
-            res.status(422);
-            res.send(
-                "Your registration has expired please contact the support or register again."
-            );
-        }
-    } else {
-        res.status(422);
-        res.send("There is a token missing.");
     }
 });
 
@@ -289,24 +149,25 @@ router.get("/verifyemail/", function (req, res, next) {
 router.post("/login/", function (req, res, next) {
     passport.authenticate("local", { session: false }, (err, user, info) => {
         if (err || !user) {
-            console.log(err);
+            //console.log(err);
             return res.status(400).json({
-                message: info ? info.message : "Login failed",
-                user: user
+                code: "#A003",
+                message: "Invalid Login"
             });
         }
 
         req.login(user, { session: false }, err => {
             if (err) {
-                console.log(err);
-                res.send(err);
+                //console.log(err);
+                res.send({code: "A003", message: err.message});
             }
-
-            let exp = Date.now() + 1000 * 7 * 24 * 3600;
+            //expires in a day
+            let exp = Date.now() + 1000 * 1 * 24 * 3600;
             const token = jwt.sign({ user, exp: exp }, jwtSecret);
             return res.json({ user, token, exp: exp });
         });
     })(req, res);
 });
+
 
 module.exports = router;

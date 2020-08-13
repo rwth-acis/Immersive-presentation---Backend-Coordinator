@@ -13,6 +13,7 @@ router.get("/", function (req, res, next) {
     res.send(req.user);
 });
 
+/* POST reset password. */
 router.post("/resetpassword/", function (req, res, next) {
     //check required params in the body
     if (req.body.oldPwd && req.body.newPwd) {
@@ -25,22 +26,25 @@ router.post("/resetpassword/", function (req, res, next) {
         //check wheather the oldPwd matched the stored one
         mysqlpool.getConnection((err, conn) => {
             if (err) {
-                //console.log("Fehler in get Connection \n ");
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
                 throw err;
             }
             //prepare for connection
-            let sqlstatement = "SELECT * FROM doctors WHERE doctors_id = ?";
-            conn.query(sqlstatement, [req.user.doctors_id], (err, result) => {
+            let sqlstatement = "SELECT * FROM user WHERE iduser = ?";
+            conn.query(sqlstatement, [req.user.iduser], (err, result) => {
                 //No conn.release() here because it is used later
                 if (err) {
                     conn.release();
+                    res.status(500);
+                    res.send({code: "#I001", message: "MySQL-Connection-Failed"});
                     throw err;
                 }
                 //Check the password - stored on result[0].password
                 if (result.length > 0) {
                     bcrypt.compare(
                         req.body.oldPwd,
-                        result[0].password,
+                        result[0].pwdhash,
                         (err, same) => {
                             if (same == true) {
                                 //oldPwd matches
@@ -51,7 +55,7 @@ router.post("/resetpassword/", function (req, res, next) {
                                         conn.release();
                                         res.status(500);
                                         res.send(
-                                            "Hashing failed. Maybe try another password."
+                                            {code: "#I002", message: "Password lead to hashing error."}
                                         );
                                     } else {
                                         bcrypt.hash(
@@ -63,18 +67,18 @@ router.post("/resetpassword/", function (req, res, next) {
                                                     conn.release();
                                                     res.status(500);
                                                     res.send(
-                                                        "Hashing failed. Maybe try another password."
+                                                        {code: "#I002", message: "Password lead to hashing error."}
                                                     );
                                                 } else {
                                                     //Hashing sucessfull
                                                     //Prepare the Update sql statement
                                                     let sqlUpdatestatement =
-                                                        "UPDATE doctors SET password = ? WHERE doctors_id = ?;";
+                                                        "UPDATE user SET pwdhash = ? WHERE iduser = ?;";
                                                     conn.query(
                                                         sqlUpdatestatement,
                                                         [
                                                             encrypted,
-                                                            req.user.doctors_id
+                                                            req.user.iduser
                                                         ],
                                                         (err, result) => {
                                                             conn.release();
@@ -82,8 +86,8 @@ router.post("/resetpassword/", function (req, res, next) {
                                                                 throw err;
                                                             } else {
                                                                 res.send({
-                                                                    msg:
-                                                                        "Das Passwort wurde geändert."
+                                                                    message:
+                                                                        "Passwort changed successfully"
                                                                 });
                                                             }
                                                         }
@@ -97,7 +101,10 @@ router.post("/resetpassword/", function (req, res, next) {
                                 conn.release();
                                 //wrong oldPwd
                                 res.status(400);
-                                res.send({ msg: "Falsches altes Passwort." });
+                                res.send({
+                                    code: "#A004",
+                                    message: "Old password incorrect."
+                                });
                             }
                         }
                     );
@@ -106,13 +113,11 @@ router.post("/resetpassword/", function (req, res, next) {
                     //logged in user can not be found in the DB -> big inconsistency
                     res.status(500);
                     res.send({
-                        msg:
-                            "User konnte nicht in der Datnebank gefunden werden. Bitte wenden Sie sich an den Support."
+                        code: "#A004",
+                        message: "Old password incorrect."
                     });
                 }
             });
-            //release the connection
-            conn.release();
         });
     } else {
         //required params missing
