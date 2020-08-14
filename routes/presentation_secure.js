@@ -216,9 +216,9 @@ router.post("/presentation/start", (req, res)=>{
                 return;
             }
 
-            //Create a Photon Room
+            //Create a Photon Room Name
             //ToDo
-            let photonRoomName = "Demo";
+            let photonRoomName = "R_" + req.user.iduser + "_" + req.body.idpresentation;
 
             //Create jwt for guest invitation
             let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
@@ -324,9 +324,6 @@ router.post("/presentation/stop", (req, res)=>{
 
                 let photonRoomName = results[0].photonroomname;
 
-                //Close the Photon Room
-                //ToDo
-
                 //Update presentation status
                 let sqlstatement = "UPDATE present SET status = 2, photonroomname = ? WHERE iduser = ? AND idpresentation = ?;";
                 conn.query(sqlstatement, [photonRoomName, req.user.iduser, req.body.idpresentation], (err, results)=>{
@@ -344,7 +341,7 @@ router.post("/presentation/stop", (req, res)=>{
                         //all done
                         conn.release();
                         res.status(200);
-                        res.send({message: "The presentation stopped successfully."});
+                        res.send({photonroomname: photonRoomName, message: "The presentation stopped successfully."});
                         return;
                     }
 
@@ -362,7 +359,7 @@ router.post("/presentation/stop", (req, res)=>{
 
                         conn.release();
                         res.status(200);
-                        res.send({message: "The presentation stopped successfully."});
+                        res.send({photonroomname: photonRoomName, message: "The presentation stopped successfully."});
                     });
                 });
             });
@@ -449,7 +446,7 @@ router.get("/presentation/invitationlink", (req, res)=>{
                         throw err;
                         return;
                     }
-                    
+
                     //Create jwt for guest invitation
                     let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
                     conn.release();
