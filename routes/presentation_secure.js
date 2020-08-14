@@ -370,4 +370,59 @@ router.post("/presentation/stop", (req, res)=>{
     });
 });
 
+router.get("/presentation/invitationlink", (req, res)=>{
+    //Validate body
+    if(!req.body.idpresentation || (req.body.idpresentation && Number.isNaN(req.body.idpresentation))){
+        res.status(400);
+        res.send({code: "#D001", message: "idpresentation is missing or not a number."});
+        return;
+    }
+
+    //Optional body
+    let exp;
+    if(!req.body.expoffsetmillsek || (req.body.expoffsetmillsek && Number.isNaN(req.body.expoffsetmillsek))){
+        //default
+        exp = Date.now() + 1000 * 365 * 24 * 3600;
+    }else{
+        exp = Date.now() + parseInt(req.body.expoffsetmillsek);
+    }
+
+    //Check whether the user is presenting the presentation
+    let sqlstatement = "SELECT * FROM present WHERE iduser = ? AND idpresentation = ?;";
+    mysqlpool.getConnection((err, conn)=>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(!results || results.length < 1){
+                conn.release();
+                res.status(403);
+                res.send({code: "#A005", message: "Permission denied. You are not the owner of the presentation."});
+                return;
+            }
+
+            //Create jwt for guest invitation
+            let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
+            conn.release();
+            res.status(200);
+            res.send({invitationToken: invitationToken, message: "Invitation token successfully created."});
+        });
+    });
+});
+
 module.exports = router;
