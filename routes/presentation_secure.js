@@ -3,7 +3,8 @@ var router = express.Router();
 const mysqlpool = require("../db");
 const cleaner = require("../sql-cleaner");
 const fs = require('fs');
-
+const jwt = require("jsonwebtoken");
+const jwtSecret = process.env.JWT_SECRET || "your_jwt_secret";
 
 
 //in /
@@ -70,7 +71,7 @@ router.post("/presentation", (req, res)=>{
 
 router.post("/presentation/upload", (req, res)=>{
     //validate body
-    if(!req.body.idpresentation){
+    if(!req.body.idpresentation || (req.body.idpresentation && Number.isNaN(req.body.idpresentation))){
         res.status(400);
         res.send({code: "#D001", message: "Name is missing."});
         return;
@@ -170,5 +171,203 @@ router.post("/presentation/upload", (req, res)=>{
     });
 });
 
+router.post("/presentation/start", (req, res)=>{
+    //Validate body
+    if(!req.body.idpresentation || (req.body.idpresentation && Number.isNaN(req.body.idpresentation))){
+        res.status(400);
+        res.send({code: "#D001", message: "idpresentation is missing or not a number."});
+        return;
+    }
+    //Optinal body
+    let exp;
+    if(!req.body.expoffsetmillsek || (req.body.expoffsetmillsek && Number.isNaN(req.body.expoffsetmillsek))){
+        //default
+        exp = Date.now() + 1000 * 365 * 24 * 3600;
+    }else{
+        exp = Date.now() + parseInt(req.body.expoffsetmillsek);
+    }
+
+    //Check ownership
+    mysqlpool.getConnection((err, conn)=>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM own INNER JOIN presentation ON own.idpresentation = presentation.idpresentation WHERE own.idpresentation = ? AND iduser = ?;";
+        conn.query(sqlstatement, [req.body.idpresentation, req.user.iduser], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(results.length < 1){
+                conn.release();
+                res.status(403);
+                res.send({code: "#A005", message: "Permission denied. You are not the owner of the presentation."});
+                return;
+            }
+
+            //Create a Photon Room
+            //ToDo
+            let photonRoomName = "Demo";
+
+            //Create jwt for guest invitation
+            let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
+
+            //Update presentation status
+            let sqlstatement = "UPDATE present SET status = 1, photonroomname = ? WHERE iduser = ? AND idpresentation = ?;";
+            conn.query(sqlstatement, [photonRoomName, req.user.iduser, req.body.idpresentation], (err, results)=>{
+                if(err){
+                    conn.release();
+                    res.status(500);
+                    res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                    console.log(err);
+                    throw err;
+                    return;
+                }
+
+                //Check affected rows
+                if(results.affectedRows >= 1){
+                    //all done
+                    conn.release();
+                    res.status(200);
+                    res.send({photonRoomName: photonRoomName, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
+                    return;
+                }
+
+                //Insert new presentation relation in case no row was affected
+                let sqlstatement = "INSERT INTO present (iduser, idpresentation, status, photonroomname) VALUES (?, ?, 1, ?);"
+                conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation, photonRoomName], (err, resulst)=>{
+                    if(err){
+                        conn.release();
+                        res.status(500);
+                        res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                        console.log(err);
+                        throw err;
+                        return;
+                    }
+
+                    conn.release();
+                    res.status(200);
+                    res.send({photonRoomName: photonRoomName, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
+                });
+            });
+
+        });
+    });
+});
+
+router.post("/presentation/stop", (req, res)=>{
+    //Validate body
+    if(!req.body.idpresentation || (req.body.idpresentation && Number.isNaN(req.body.idpresentation))){
+        res.status(400);
+        res.send({code: "#D001", message: "idpresentation is missing or not a number."});
+        return;
+    }
+
+    //Check ownership
+    mysqlpool.getConnection((err, conn)=>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM own INNER JOIN presentation ON own.idpresentation = presentation.idpresentation WHERE own.idpresentation = ? AND iduser = ?;";
+        conn.query(sqlstatement, [req.body.idpresentation, req.user.iduser], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(results.length < 1){
+                conn.release();
+                res.status(403);
+                res.send({code: "#A005", message: "Permission denied. You are not the owner of the presentation."});
+                return;
+            }
+
+            //Get the Photon Room
+            let sqlstatement = "SELECT * FROM present WHERE iduser = ? AND idpresentation = ?;";
+            conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation], (err, results)=>{
+                if(err){
+                    conn.release();
+                    res.status(500);
+                    res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                    console.log(err);
+                    throw err;
+                    return;
+                }
+
+                if(!results[0].photonroomname){
+                    conn.release();
+                    res.status(500);
+                    res.send({code: "#I004", message: "No Photon Room associated."});
+                    return;
+                }
+
+                let photonRoomName = results[0].photonroomname;
+
+                //Close the Photon Room
+                //ToDo
+
+                //Update presentation status
+                let sqlstatement = "UPDATE present SET status = 2, photonroomname = ? WHERE iduser = ? AND idpresentation = ?;";
+                conn.query(sqlstatement, [photonRoomName, req.user.iduser, req.body.idpresentation], (err, results)=>{
+                    if(err){
+                        conn.release();
+                        res.status(500);
+                        res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                        console.log(err);
+                        throw err;
+                        return;
+                    }
+
+                    //Check affected rows
+                    if(results.affectedRows >= 1){
+                        //all done
+                        conn.release();
+                        res.status(200);
+                        res.send({message: "The presentation stopped successfully."});
+                        return;
+                    }
+
+                    //Insert new presentation relation in case no row was affected
+                    let sqlstatement = "INSERT INTO present (iduser, idpresentation, status, photonroomname) VALUES (?, ?, 2, ?);"
+                    conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation, photonRoomName], (err, resulst)=>{
+                        if(err){
+                            conn.release();
+                            res.status(500);
+                            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                            console.log(err);
+                            throw err;
+                            return;
+                        }
+
+                        conn.release();
+                        res.status(200);
+                        res.send({message: "The presentation stopped successfully."});
+                    });
+                });
+            });
+        });
+    });
+});
 
 module.exports = router;
