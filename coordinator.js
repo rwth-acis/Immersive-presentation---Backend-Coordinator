@@ -80,9 +80,10 @@ app.use(
     refrehtoke
 );
 
+app.use("/", presentation);
+
 app.use("/", passport.authenticate("jwt", { session: false }), presentation_secure);
 
-app.use("/", presentation);
 
 app.post("/contact/", (req, res) => {
     if (req.body.name && req.body.email && req.body.message) {
