@@ -112,7 +112,7 @@ router.post("/presentation/upload", (req, res)=>{
             }
 
             //validate fileupload
-            if (req.files && Object.keys(req.files).length != 1 && req.files.presentation && (req.files.presentation.mimetype.split("/")[1] == "impres" || req.files.presentation.mimetype.split("/")[1] == "pres" || req.files.presentation.mimetype.split("/")[1] == "zip")) {
+            if (!(req.files && req.files.presentation && (req.files.presentation.mimetype.split("/")[1] == "impres" || req.files.presentation.mimetype.split("/")[1] == "pres" || req.files.presentation.mimetype.split("/")[1] == "zip"))) {
                 conn.release();
                 res.status(400); 
                 res.send({code: "#D001", message: "The presentation file was not uploaded or is not type .impres .pres or .zip"});
