@@ -532,4 +532,33 @@ router.get("/presentation/foreditor", (req, res)=>{
     });
 });
 
+router.get("/presentations", (req, res)=>{
+    mysqlpool.getConnection((err, conn)=>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM own INNER JOIN presentation ON own.idpresentation = presentation.idpresentation WHERE iduser = ?;";
+        conn.query(sqlstatement, [req.user.iduser], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            res.status(200);
+            res.send(results);
+
+        });
+    });
+});
+
 module.exports = router;
