@@ -460,4 +460,76 @@ router.get("/presentation/invitationlink", (req, res)=>{
     });
 });
 
+router.get("/presentation/foreditor", (req, res)=>{
+    //Validate Parameters
+    if(!req.query.idpresentation){
+        res.status(400);
+        res.send({code: "#D001", message: "Invitation token is missing."});
+        return;
+    }
+
+    //check ownership
+    mysqlpool.getConnection((err, conn)=>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM own INNER JOIN presentation ON own.idpresentation = presentation.idpresentation WHERE own.idpresentation = ? AND iduser = ?;";
+        conn.query(sqlstatement, [req.query.idpresentation, req.user.iduser], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(results.length < 1){
+                conn.release();
+                res.status(403);
+                res.send({code: "#A005", message: "Permission denied. You are not the owner of the presentation."});
+                return;
+            }
+
+            //Read presentation from db
+            let sqlstatement = "SELECT * FROM presentation WHERE idpresentation = ?;";
+            conn.query(sqlstatement, [req.query.idpresentation], (err, results)=>{
+                if(err){
+                    conn.release();
+                    res.status(500);
+                    res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                    console.log(err);
+                    throw err;
+                    return;
+                }
+    
+                conn.release();
+    
+                if(!results || results.length < 1){
+                    res.status(404);
+                    res.send({code: "#D002", message: "Presentation not found."});
+                    return;
+                }
+    
+                let filePath = results[0].filepath;
+                if(!fs.existsSync(filePath)){
+                    res.status(404);
+                    res.send({code: "#D002", message: "Presentation not found on the disk."});
+                    return;
+                }
+    
+                //Send file as download
+                res.download(filePath);
+            });
+
+        });
+    });
+});
+
 module.exports = router;
