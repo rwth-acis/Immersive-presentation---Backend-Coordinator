@@ -555,7 +555,7 @@ router.get("/presentations", (req, res)=>{
             }
 
             res.status(200);
-            res.send(results);
+            res.send({presentations: results});
 
         });
     });
