@@ -218,15 +218,17 @@ router.post("/presentation/start", (req, res)=>{
             }
 
             //Create a Photon Room Name
-            //ToDo
             let photonRoomName = "R_" + req.user.iduser + "_" + req.body.idpresentation;
+
+            //Create a shortCode
+            let shortCodeString = "" + req.user.iduser + "-" + req.body.idpresentation;
 
             //Create jwt for guest invitation
             let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
 
             //Update presentation status
-            let sqlstatement = "UPDATE present SET status = 1, photonroomname = ? WHERE iduser = ? AND idpresentation = ?;";
-            conn.query(sqlstatement, [photonRoomName, req.user.iduser, req.body.idpresentation], (err, results)=>{
+            let sqlstatement = "UPDATE present SET status = 1, photonroomname = ?, shortCode = ? WHERE iduser = ? AND idpresentation = ?;";
+            conn.query(sqlstatement, [photonRoomName, shortCodeString, req.user.iduser, req.body.idpresentation], (err, results)=>{
                 if(err){
                     conn.release();
                     res.status(500);
@@ -241,13 +243,13 @@ router.post("/presentation/start", (req, res)=>{
                     //all done
                     conn.release();
                     res.status(200);
-                    res.send({photonRoomName: photonRoomName, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
+                    res.send({photonRoomName: photonRoomName, shortCode: shortCodeString, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
                     return;
                 }
 
                 //Insert new presentation relation in case no row was affected
-                let sqlstatement = "INSERT INTO present (iduser, idpresentation, status, photonroomname) VALUES (?, ?, 1, ?);"
-                conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation, photonRoomName], (err, resulst)=>{
+                let sqlstatement = "INSERT INTO present (iduser, idpresentation, status, photonroomname, shortCode) VALUES (?, ?, 1, ?, ?);"
+                conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation, photonRoomName, shortCodeString], (err, resulst)=>{
                     if(err){
                         conn.release();
                         res.status(500);
@@ -259,7 +261,7 @@ router.post("/presentation/start", (req, res)=>{
 
                     conn.release();
                     res.status(200);
-                    res.send({photonRoomName: photonRoomName, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
+                    res.send({photonRoomName: photonRoomName, shortCode: shortCodeString, invitationToken: invitationToken, exp: exp, message: "The presentation started successfully."});
                 });
             });
 
@@ -428,17 +430,26 @@ router.get("/presentation/invitationlink", (req, res)=>{
 
                 if(results && results.length > 0){
                     //The present relation exists and can be left as it is
+
+                    let shortCodeString = "";
+                    if(results[results.length - 1].shortCode){
+                        shortCodeString = results[results.length - 1].shortCode;
+                    }
+
                     //Create jwt for guest invitation
                     let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
                     conn.release();
                     res.status(200);
-                    res.send({invitationToken: invitationToken, message: "Invitation token successfully created."});
+                    res.send({invitationToken: invitationToken, shortCode: shortCodeString, message: "Invitation token successfully created."});
                     return;
                 }
 
+                //Create shortCode
+                let shortCodeString = "" + req.user.iduser + "-" + req.body.idpresentation;
+                
                 //Initialize a new present relation
-                let sqlstatement = "INSERT INTO present (iduser, idpresentation, status) VALUES (?, ?, 2);";
-                conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation], (err, results)=>{
+                let sqlstatement = "INSERT INTO present (iduser, idpresentation, status, shortCode) VALUES (?, ?, 2, ?);";
+                conn.query(sqlstatement, [req.user.iduser, req.body.idpresentation, shortCodeString], (err, results)=>{
                     if(err){
                         conn.release();
                         res.status(500);
@@ -447,12 +458,12 @@ router.get("/presentation/invitationlink", (req, res)=>{
                         throw err;
                         return;
                     }
-
+                    
                     //Create jwt for guest invitation
                     let invitationToken = jwt.sign({idpresentation: req.body.idpresentation, iduser: req.user.iduser, exp: exp}, jwtSecret);
                     conn.release();
                     res.status(200);
-                    res.send({invitationToken: invitationToken, message: "Invitation token successfully created."});
+                    res.send({invitationToken: invitationToken, shortCode: shortCodeString, message: "Invitation token successfully created."});
                     return;
                 });
             });
