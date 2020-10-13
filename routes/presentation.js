@@ -203,7 +203,7 @@ router.get("/presentation/shortCode", (req, res)=>{
 
             let idPresentation = "";
             if(results[results.length - 1] && results[results.length - 1].idpresentation){
-                idpresentation = results[results.length - 1].idpresentation;
+                idPresentation = results[results.length - 1].idpresentation;
             }else{
                 res.status(404);
                 res.send({code: "#D004", message: "No active Presentation found"});
