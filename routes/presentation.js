@@ -165,4 +165,84 @@ router.get("/presentation/photonroom", (req, res)=>{
     //Send photon room
 });
 
+router.get("/presentation/shortCode", (req, res)=>{
+    //Validate Parameters
+    if(!req.query.shortCode){
+        res.status(400);
+        res.send({code: "#D001", message: "shortCode is missing."});
+        return;
+    }
+
+    //Read presentation id
+    mysqlpool.getConnection((err, conn) =>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM present WHERE shortCode = ? AND status = 1;";
+        conn.query(sqlstatement, [req.query.shortCode], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(!results || results.length < 1){
+                res.status(404);
+                res.send({code: "#D004", message: "No active Presentation found"});
+                return;
+            }
+
+            let idPresentation = "";
+            if(results[results.length - 1] && results[results.length - 1].idpresentation){
+                idpresentation = results[results.length - 1].idpresentation;
+            }else{
+                res.status(404);
+                res.send({code: "#D004", message: "No active Presentation found"});
+                return;
+            }
+
+            //Read presentation from db
+            let sqlstatement = "SELECT * FROM presentation WHERE idpresentation = ?;";
+
+            conn.query(sqlstatement, [idPresentation], (err, results)=>{
+                if(err){
+                    conn.release();
+                    res.status(500);
+                    res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                    console.log(err);
+                    throw err;
+                    return;
+                }
+    
+                conn.release();
+    
+                if(!results || results.length < 1){
+                    res.status(404);
+                    res.send({code: "#D002", message: "Presentation not found."});
+                    return;
+                }
+    
+                let filePath = results[0].filepath;
+                if(!fs.existsSync(filePath)){
+                    res.status(404);
+                    res.send({code: "#D002", message: "Presentation not found."});
+                    return;
+                }
+    
+                //Send file as download
+                res.download(filePath);
+            });
+        });
+    });
+});
+
 module.exports = router;
