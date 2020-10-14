@@ -245,4 +245,48 @@ router.get("/presentation/shortCode", (req, res)=>{
     });
 });
 
+router.get("/presentation/connectioninfos/shortCode", (req, res)=>{
+    //Validate Parameters
+    if(!req.query.shortCode){
+        res.status(400);
+        res.send({code: "#D001", message: "shortCode is missing."});
+        return;
+    }
+
+    //Read presentation id
+    mysqlpool.getConnection((err, conn) =>{
+        if(err){
+            conn.release();
+            res.status(500);
+            res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+            console.log(err);
+            throw err;
+            return;
+        }
+
+        let sqlstatement = "SELECT * FROM present WHERE shortCode = ? AND status = 1;";
+        conn.query(sqlstatement, [req.query.shortCode], (err, results)=>{
+            if(err){
+                conn.release();
+                res.status(500);
+                res.send({code: "#I001", message: "MySQL-Connection-Failed"});
+                console.log(err);
+                throw err;
+                return;
+            }
+
+            if(!results || results.length < 1){
+                res.status(404);
+                res.send({code: "#D004", message: "No active Presentation found"});
+                return;
+            }
+
+            conn.release();
+
+            res.status(200);
+            res.send(results[results.length - 1]);
+        });
+    });
+});
+
 module.exports = router;
