@@ -9,6 +9,18 @@ const bcrypt = require("bcryptjs");
 const saltRounds = parseInt(process.env.SALTROUNDS) || 9;
 const jwtSecret = process.env.JWT_SECRET || "your_jwt_secret";
 const mailer = require("../../tools/mailer");
+const { Issuer } = require('openid-client');
+var client;
+Issuer.discover('https://api.learning-layers.eu/o/oauth2/').then(function (learningLayersIssuer){
+      //console.log('Discovered issuer %s %O', learningLayersIssuer.issuer, learningLayersIssuer.metadata);
+      client = new learningLayersIssuer.Client({
+        client_id: process.env.OIDCCLIENTID,
+        client_secret: process.env.OIDCCLIENTSECRET,
+        redirect_uris: ['http://localhost:3000/cb'],
+        response_types: ['code']
+      });
+    })
+
 //
 //
 /* POST register user (doctor / patient) */
@@ -160,8 +172,25 @@ router.post("/openid/", function (req, res, next) {
   } else {
     //Valid Data
     const email = req.body.email;
+    if(!req.body.accesstoken){
+      res.status(400);
+      res.send({ code: "#A001", message: "Validation Error", list: errors });
+      return;
+    }
+    let accessToken = req.body.accesstoken;
+    //load User data from authenticator
+    client.userinfo(accessToken)
+    .then(function (userinfo) {
+      //console.log('userinfo %j', userinfo);
+      //Guard
+      if(!userinfo.email || (userinfo.email && userinfo.email != email)){
+        res.status(400);
+        res.send({ code: "#A001", message: "Validation Error", list: errors });
+        return;
+      }
 
-    // Store user in the databse
+      //User is authenticated
+      // Store user in the databse
     mysqlpool.getConnection(function (err, conn) {
       if (err) {
         console.log(err);
@@ -233,6 +262,13 @@ router.post("/openid/", function (req, res, next) {
           }
         });
       }
+    });
+
+    })
+    .catch(function (error){
+      res.status(400);
+      res.send({ code: "#A001", message: "Validation Error - AccessToken incorrect"});
+      return;
     });
   }
 });
