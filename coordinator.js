@@ -22,6 +22,11 @@ if (process.env.PRODUCTION && process.env.PRODUCTION == "0") {
     production = false;
 }
 
+var maxFilesize = 1 * 1024 * 1024 * 1024 //1GB is default max file upload
+if (process.env.MAXFILESIZE) {
+    maxFilesize = process.env.MAXFILESIZE;
+}
+
 const app = express();
 app.engine("hbs", hbs({ extname: "hbs" }));
 app.set("views", path.join(__dirname, "views"));
@@ -32,7 +37,7 @@ app.use(expressValidator());
 app.use(cors());
 app.use(
     fileUpload({
-        limits: { fileSize: 1 * 1024 * 1024 * 1024 } //1GB max file upload
+        limits: { fileSize: maxFilesize }
     })
 );
 
